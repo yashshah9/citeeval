@@ -1,0 +1,56 @@
+services:
+  redis:
+    image: redis:7-alpine
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: citeeval
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d citeeval"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  citeeval:
+    build:
+      context: ..
+      dockerfile: citeeval/docker/Dockerfile
+      target: runtime
+    ports:
+      - "8091:8091"
+    environment:
+      CITEEVAL_HOST: 0.0.0.0
+      CITEEVAL_PORT: 8091
+      CITEEVAL_AUTH_DRIVER: api_key
+      CITEEVAL_AUDIT_DRIVER: postgres
+      CITEEVAL_QUEUE_DRIVER: redis
+      CITEEVAL_REDIS_URL: redis://redis:6379/0
+      CITEEVAL_POSTGRES_DSN: postgresql://postgres:postgres@postgres:5432/citeeval
+      CITEEVAL_API_KEYS: "dev-key:demo-tenant"
+      CITEEVAL_ADMIN_KEYS: admin-key
+    depends_on:
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+
+  integration:
+    build:
+      context: ..
+      dockerfile: citeeval/docker/Dockerfile
+      target: test
+    environment:
+      CITEEVAL_BASE_URL: http://citeeval:8091
+      RUN_DOCKER_INTEGRATION: "1"
+    depends_on:
+      citeeval:
+        condition: service_healthy
+    command: ["pytest", "tests/test_integration_docker.py", "-v"]

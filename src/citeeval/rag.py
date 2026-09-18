@@ -7,6 +7,7 @@ import time
 import uuid
 from dataclasses import dataclass, field
 from threading import Lock
+from typing import Any
 
 from citeeval.embed import cosine, hash_embed, tokenize
 
@@ -47,12 +48,24 @@ class Corpus:
     # ponytail: flat USD estimate for extractive answers; replace with real LLM metering
     cost_per_ask_usd: float = 0.0001
     dense_weight: float = 0.45
+    backend: Any | None = None
     _lock: Lock = field(default_factory=Lock)
+
+    def load(self) -> int:
+        """Hydrate in-memory chunks from durable backend. Returns loaded count."""
+        if self.backend is None:
+            return 0
+        loaded = self.backend.load_all()
+        with self._lock:
+            self.chunks = loaded
+        return len(loaded)
 
     def clear(self) -> None:
         with self._lock:
             self.chunks.clear()
             self.traces.clear()
+        if self.backend is not None:
+            self.backend.clear()
 
     def ingest(self, *, source: str, text: str, chunk_size: int = 400) -> list[Chunk]:
         doc_id = str(uuid.uuid4())
@@ -70,6 +83,8 @@ class Corpus:
                 )
                 self.chunks.append(chunk)
                 created.append(chunk)
+        if self.backend is not None and created:
+            self.backend.save_chunks(created)
         return created
 
     def search(self, query: str, *, top_k: int = 3) -> list[Hit]:

@@ -80,4 +80,22 @@ def test_docker_ingest_ask_eval_traces() -> None:
     health = httpx.get(f"{BASE}/health", timeout=5.0).json()
     assert health["queue"] == "redis"
     assert health["audit"] == "postgres"
+    assert health["corpus"] == "postgres"
     assert health["retrieval"] == "hybrid_hash"
+
+    # Persistence: wipe memory via reload from Postgres; answer still cites policy
+    reload = httpx.post(
+        f"{BASE}/v1/admin/reload",
+        headers={"Authorization": "Bearer admin-key"},
+        timeout=5.0,
+    )
+    assert reload.status_code == 200
+    assert reload.json()["chunks"] >= 1
+    ask2 = httpx.post(
+        f"{BASE}/v1/ask",
+        headers=AUTH,
+        json={"question": "refund policy days"},
+        timeout=10.0,
+    ).json()
+    assert ask2["status"] == "ok"
+    assert ask2["citations"][0]["source"] == "policy.md"

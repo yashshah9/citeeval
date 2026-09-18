@@ -31,6 +31,15 @@ Every `/v1/ask` records an `AskTrace`:
 
 List recent traces via `GET /v1/traces`.
 
+## Corpus durability
+
+| Driver | Behavior |
+|--------|----------|
+| `memory` (default) | process-local chunks |
+| `postgres` | `citeeval_chunks` table; load on boot; `POST /v1/admin/reload` rehydrates |
+
+Compose sets `CITEEVAL_CORPUS_DRIVER=postgres`.
+
 ## Eval promotion gate
 
 ```bash

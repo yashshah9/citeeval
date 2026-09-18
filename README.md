@@ -30,6 +30,7 @@ docker compose run --rm integration
 | GET | `/v1/traces` | recent ask traces + cost rollup |
 | POST | `/v1/eval` | run eval cases against live corpus |
 | POST | `/v1/admin/reset` | clear corpus (admin) |
+| POST | `/v1/admin/reload` | rehydrate chunks from durable store (admin) |
 
 ## Docs
 

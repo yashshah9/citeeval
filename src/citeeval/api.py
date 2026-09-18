@@ -10,16 +10,13 @@ from pydantic import BaseModel, Field
 
 from citeeval.__version__ import __version__
 from citeeval.config import Settings
+from citeeval.corpus_factory import build_corpus
 from citeeval.evals import EvalCase, run_eval
 from citeeval.platform import build_kit
-from citeeval.rag import Corpus
 
 settings = Settings()
 kit = build_kit(settings)
-corpus = Corpus(
-    cost_per_ask_usd=settings.cost_per_ask_usd,
-    dense_weight=settings.dense_weight,
-)
+corpus = build_corpus(settings)
 
 app = FastAPI(title="citeeval", version=__version__)
 
@@ -67,6 +64,7 @@ def health() -> dict[str, Any]:
         "auth": settings.auth_driver,
         "audit": settings.audit_driver,
         "queue": settings.queue_driver,
+        "corpus": settings.corpus_driver,
         "chunks": len(corpus.chunks),
         "traces": len(corpus.traces),
         "retrieval": "hybrid_hash",
@@ -200,3 +198,21 @@ def reset_corpus(
         raise HTTPException(status_code=403, detail="admin required")
     corpus.clear()
     return {"status": "cleared"}
+
+
+@app.post("/v1/admin/reload")
+def reload_corpus(
+    principal: Annotated[Principal, Depends(require_principal)],
+) -> dict[str, Any]:
+    """Drop in-memory chunks and rehydrate from durable backend (if configured)."""
+    if "admin" not in principal.roles:
+        raise HTTPException(status_code=403, detail="admin required")
+    with corpus._lock:
+        corpus.chunks.clear()
+        corpus.traces.clear()
+    loaded = corpus.load()
+    return {
+        "status": "reloaded",
+        "corpus": settings.corpus_driver,
+        "chunks": loaded,
+    }

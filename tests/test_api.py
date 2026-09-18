@@ -20,6 +20,7 @@ def client() -> Iterator[TestClient]:
     api_module.settings.auth_driver = "api_key"
     api_module.settings.audit_driver = "memory"
     api_module.settings.queue_driver = "memory"
+    api_module.settings.corpus_driver = "memory"
     api_module.kit = build_kit(api_module.settings)
     api_module.corpus = Corpus(
         cost_per_ask_usd=api_module.settings.cost_per_ask_usd,
@@ -37,6 +38,7 @@ def test_health(client: TestClient) -> None:
     body = client.get("/health").json()
     assert body["status"] == "ok"
     assert body["retrieval"] == "hybrid_hash"
+    assert body["corpus"] == "memory"
 
 
 def test_ask_requires_auth(client: TestClient) -> None:
@@ -172,3 +174,38 @@ def test_baseline_compare_detects_regression() -> None:
     ]
     regs = compare_to_baseline(broken, baseline)
     assert any(results[0].case_id in m and "was pass, now fail" in m for m in regs)
+
+
+def test_memory_backend_reload_roundtrip() -> None:
+    """Durable backend contract without Postgres: fake store + reload."""
+    from citeeval.rag import Chunk, Corpus
+
+    class FakeStore:
+        def __init__(self) -> None:
+            self.rows: list[Chunk] = []
+
+        def ensure_schema(self) -> None:
+            return None
+
+        def load_all(self) -> list[Chunk]:
+            return list(self.rows)
+
+        def save_chunks(self, chunks: list[Chunk]) -> None:
+            self.rows.extend(chunks)
+
+        def clear(self) -> None:
+            self.rows.clear()
+
+    store = FakeStore()
+    corpus = Corpus(backend=store)  # type: ignore[arg-type]
+    created = corpus.ingest(source="policy.md", text="Refund within 30 days.")
+    assert len(created) >= 1
+    assert len(store.rows) >= 1
+    # wipe memory only, then reload from backend
+    with corpus._lock:
+        corpus.chunks.clear()
+    assert corpus.chunks == []
+    assert corpus.load() >= 1
+    answer, citations, _ = corpus.ask("refund days")
+    assert citations
+    assert "30 days" in answer or citations[0]["source"] == "policy.md"

@@ -17,6 +17,7 @@ class Settings(BaseSettings):
     queue_driver: str = "memory"
     redis_url: str = "redis://localhost:6379/0"
     postgres_dsn: str = "postgresql://localhost:5432/citeeval"
+    corpus_driver: str = "memory"  # memory | postgres
     eval_min_pass_rate: float = 0.8
     cost_per_ask_usd: float = 0.0001
     dense_weight: float = 0.45

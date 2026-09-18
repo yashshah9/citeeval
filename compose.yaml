@@ -32,6 +32,7 @@ services:
       CITEEVAL_AUTH_DRIVER: api_key
       CITEEVAL_AUDIT_DRIVER: postgres
       CITEEVAL_QUEUE_DRIVER: redis
+      CITEEVAL_CORPUS_DRIVER: postgres
       CITEEVAL_REDIS_URL: redis://redis:6379/0
       CITEEVAL_POSTGRES_DSN: postgresql://postgres:postgres@postgres:5432/citeeval
       CITEEVAL_API_KEYS: "dev-key:demo-tenant"

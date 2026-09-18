@@ -15,7 +15,7 @@ from citeeval.rag import Corpus
 
 @pytest.fixture
 def client() -> Iterator[TestClient]:
-    api_module.settings.api_keys = "dev-key:demo-tenant"
+    api_module.settings.api_keys = "dev-key:demo-tenant,other-key:other-tenant"
     api_module.settings.admin_keys = "admin-key"
     api_module.settings.auth_driver = "api_key"
     api_module.settings.audit_driver = "memory"
@@ -32,6 +32,7 @@ def client() -> Iterator[TestClient]:
 
 AUTH = {"Authorization": "Bearer dev-key"}
 ADMIN = {"Authorization": "Bearer admin-key"}
+OTHER = {"Authorization": "Bearer other-key"}
 
 
 def test_health(client: TestClient) -> None:
@@ -154,6 +155,31 @@ def test_reload_memory_is_noop(client: TestClient) -> None:
     body = client.post("/v1/admin/reload", headers=ADMIN).json()
     assert body["status"] == "noop"
     assert client.get("/health").json()["chunks"] == before
+
+
+def test_tenant_isolation(client: TestClient) -> None:
+    client.post(
+        "/v1/ingest",
+        headers=AUTH,
+        json={
+            "source": "secret.md",
+            "text": "Tenant A refund window is exactly 11 days only.",
+        },
+    )
+    other = client.post(
+        "/v1/ask",
+        headers=OTHER,
+        json={"question": "What is the refund window days?"},
+    ).json()
+    assert other["status"] == "no_evidence"
+    assert other["citations"] == []
+    own = client.post(
+        "/v1/ask",
+        headers=AUTH,
+        json={"question": "What is the refund window days?"},
+    ).json()
+    assert own["status"] == "ok"
+    assert own["citations"]
 
 
 def test_golden_suite_gate() -> None:

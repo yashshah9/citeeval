@@ -77,7 +77,7 @@ def ingest(
     principal: Annotated[Principal, Depends(require_principal)],
 ) -> dict[str, Any]:
     tenant_id = principal.tenant_id or principal.id
-    chunks = corpus.ingest(source=body.source, text=body.text)
+    chunks = corpus.ingest(source=body.source, text=body.text, tenant_id=tenant_id)
     kit.audit.emit(
         actor=principal.id,
         action="doc.ingest",
@@ -94,7 +94,9 @@ def ask(
     principal: Annotated[Principal, Depends(require_principal)],
 ) -> dict[str, Any]:
     tenant_id = principal.tenant_id or principal.id
-    answer, citations, trace = corpus.ask(body.question, top_k=body.top_k)
+    answer, citations, trace = corpus.ask(
+        body.question, top_k=body.top_k, tenant_id=tenant_id
+    )
     kit.audit.emit(
         actor=principal.id,
         action="ask.query",
@@ -126,10 +128,14 @@ def list_traces(
     principal: Annotated[Principal, Depends(require_principal)],
     limit: int = 20,
 ) -> dict[str, Any]:
-    del principal
     limit = max(1, min(limit, 100))
-    items = list(reversed(corpus.traces[-limit:]))
-    total_cost = sum(t.estimated_cost_usd for t in corpus.traces)
+    if "admin" in principal.roles:
+        items = list(reversed(corpus.traces[-limit:]))
+        total_cost = sum(t.estimated_cost_usd for t in corpus.traces)
+    else:
+        tenant_id = principal.tenant_id or principal.id
+        items = corpus.traces_for_tenant(tenant_id, limit=limit)
+        total_cost = sum(t.estimated_cost_usd for t in items)
     return {
         "count": len(items),
         "total_estimated_cost_usd": round(total_cost, 6),
@@ -141,6 +147,7 @@ def list_traces(
                 "top_score": t.top_score,
                 "estimated_cost_usd": t.estimated_cost_usd,
                 "retrieval_mode": t.retrieval_mode,
+                "tenant_id": t.tenant_id,
             }
             for t in items
         ],

@@ -20,6 +20,7 @@ class Chunk:
     text: str
     ordinal: int
     embedding: list[float] = field(default_factory=list)
+    tenant_id: str = ""
 
 
 @dataclass
@@ -39,6 +40,7 @@ class AskTrace:
     estimated_cost_usd: float
     retrieval_mode: str
     chunk_ids: list[str]
+    tenant_id: str = ""
 
 
 @dataclass
@@ -64,30 +66,43 @@ class Corpus:
         with self._lock:
             self.chunks.clear()
             self.traces.clear()
-        if self.backend is not None:
-            self.backend.clear()
+            if self.backend is not None:
+                self.backend.clear()
 
-    def ingest(self, *, source: str, text: str, chunk_size: int = 400) -> list[Chunk]:
+    def ingest(
+        self,
+        *,
+        source: str,
+        text: str,
+        chunk_size: int = 400,
+        tenant_id: str = "",
+    ) -> list[Chunk]:
         doc_id = str(uuid.uuid4())
         parts = _chunk_text(text, chunk_size=chunk_size)
         created: list[Chunk] = []
-        with self._lock:
-            for i, part in enumerate(parts):
-                chunk = Chunk(
+        for i, part in enumerate(parts):
+            created.append(
+                Chunk(
                     id=str(uuid.uuid4()),
                     document_id=doc_id,
                     source=source,
                     text=part,
                     ordinal=i,
                     embedding=hash_embed(part),
+                    tenant_id=tenant_id,
                 )
-                self.chunks.append(chunk)
-                created.append(chunk)
-        if self.backend is not None and created:
+            )
+        if not created:
+            return []
+        if self.backend is not None:
             self.backend.save_chunks(created)
+        with self._lock:
+            self.chunks.extend(created)
         return created
 
-    def search(self, query: str, *, top_k: int = 3) -> list[Hit]:
+    def search(
+        self, query: str, *, top_k: int = 3, tenant_id: str | None = None
+    ) -> list[Hit]:
         q_tokens = tokenize(query)
         if not q_tokens:
             return []
@@ -96,6 +111,8 @@ class Corpus:
         with self._lock:
             scored: list[Hit] = []
             for chunk in self.chunks:
+                if tenant_id is not None and chunk.tenant_id != tenant_id:
+                    continue
                 c_tokens = tokenize(chunk.text)
                 if not c_tokens:
                     continue
@@ -125,15 +142,23 @@ class Corpus:
     def record_trace(self, trace: AskTrace) -> None:
         with self._lock:
             self.traces.append(trace)
-            # keep last 500
             if len(self.traces) > 500:
                 self.traces = self.traces[-500:]
 
+    def traces_for_tenant(self, tenant_id: str, *, limit: int = 20) -> list[AskTrace]:
+        with self._lock:
+            items = [t for t in self.traces if t.tenant_id == tenant_id]
+            return list(reversed(items[-limit:]))
+
     def ask(
-        self, question: str, *, top_k: int = 3
+        self,
+        question: str,
+        *,
+        top_k: int = 3,
+        tenant_id: str = "",
     ) -> tuple[str, list[dict[str, object]], AskTrace]:
         started = time.perf_counter()
-        hits = self.search(question, top_k=top_k)
+        hits = self.search(question, top_k=top_k, tenant_id=tenant_id)
         answer, citations = answer_from_hits(question, hits)
         latency_ms = int((time.perf_counter() - started) * 1000)
         trace = AskTrace(
@@ -144,6 +169,7 @@ class Corpus:
             estimated_cost_usd=self.cost_per_ask_usd,
             retrieval_mode="hybrid_hash",
             chunk_ids=[h.chunk.id for h in hits],
+            tenant_id=tenant_id,
         )
         self.record_trace(trace)
         return answer, citations, trace

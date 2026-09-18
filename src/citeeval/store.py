@@ -15,9 +15,12 @@ CREATE TABLE IF NOT EXISTS citeeval_chunks (
     text TEXT NOT NULL,
     ordinal INTEGER NOT NULL,
     embedding JSONB NOT NULL,
+    tenant_id TEXT NOT NULL DEFAULT '',
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 CREATE INDEX IF NOT EXISTS citeeval_chunks_source_idx ON citeeval_chunks (source);
+CREATE INDEX IF NOT EXISTS citeeval_chunks_tenant_idx ON citeeval_chunks (tenant_id);
+ALTER TABLE citeeval_chunks ADD COLUMN IF NOT EXISTS tenant_id TEXT NOT NULL DEFAULT '';
 """
 
 
@@ -53,7 +56,7 @@ class PostgresChunkStore:
     def load_all(self) -> list[Chunk]:
         with self._psycopg.connect(self._dsn) as conn:
             rows = conn.execute(
-                "SELECT id, document_id, source, text, ordinal, embedding "
+                "SELECT id, document_id, source, text, ordinal, embedding, tenant_id "
                 "FROM citeeval_chunks ORDER BY created_at, ordinal"
             ).fetchall()
         out: list[Chunk] = []
@@ -61,6 +64,7 @@ class PostgresChunkStore:
             emb: Any = row[5]
             if isinstance(emb, str):
                 emb = json.loads(emb)
+            tenant = str(row[6]) if len(row) > 6 and row[6] is not None else ""
             out.append(
                 Chunk(
                     id=str(row[0]),
@@ -69,6 +73,7 @@ class PostgresChunkStore:
                     text=str(row[3]),
                     ordinal=int(row[4]),
                     embedding=[float(x) for x in emb],
+                    tenant_id=tenant,
                 )
             )
         return out
@@ -81,8 +86,8 @@ class PostgresChunkStore:
                 for c in chunks:
                     cur.execute(
                         "INSERT INTO citeeval_chunks "
-                        "(id, document_id, source, text, ordinal, embedding) "
-                        "VALUES (%s, %s, %s, %s, %s, %s::jsonb) "
+                        "(id, document_id, source, text, ordinal, embedding, tenant_id) "
+                        "VALUES (%s, %s, %s, %s, %s, %s::jsonb, %s) "
                         "ON CONFLICT (id) DO NOTHING",
                         (
                             c.id,
@@ -91,6 +96,7 @@ class PostgresChunkStore:
                             c.text,
                             c.ordinal,
                             json.dumps(c.embedding),
+                            c.tenant_id,
                         ),
                     )
             conn.commit()

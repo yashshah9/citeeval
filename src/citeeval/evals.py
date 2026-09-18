@@ -120,16 +120,13 @@ def load_golden_cases(path: Path | None = None) -> list[EvalCase]:
     raw = json.loads(resolve_cases_path(path).read_text(encoding="utf-8"))
     out: list[EvalCase] = []
     for row in raw["cases"]:
-        expect_no = row.get("expect_no_evidence")
-        if expect_no is None:
-            expect_no = row.get("must_cite_source") is None and row.get("must_include") is None
         out.append(
             EvalCase(
                 id=row.get("id"),
                 question=row["question"],
                 must_cite_source=row.get("must_cite_source"),
                 must_include=row.get("must_include"),
-                expect_no_evidence=bool(expect_no),
+                expect_no_evidence=bool(row.get("expect_no_evidence", False)),
             )
         )
     return out

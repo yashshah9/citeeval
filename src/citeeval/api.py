@@ -207,6 +207,13 @@ def reload_corpus(
     """Drop in-memory chunks and rehydrate from durable backend (if configured)."""
     if "admin" not in principal.roles:
         raise HTTPException(status_code=403, detail="admin required")
+    if corpus.backend is None:
+        return {
+            "status": "noop",
+            "corpus": settings.corpus_driver,
+            "chunks": len(corpus.chunks),
+            "detail": "no durable backend; memory corpus left intact",
+        }
     with corpus._lock:
         corpus.chunks.clear()
         corpus.traces.clear()

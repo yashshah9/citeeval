@@ -143,6 +143,19 @@ def test_reset_requires_admin(client: TestClient) -> None:
     assert client.post("/v1/admin/reset", headers=ADMIN).status_code == 200
 
 
+def test_reload_memory_is_noop(client: TestClient) -> None:
+    client.post(
+        "/v1/ingest",
+        headers=AUTH,
+        json={"source": "keep.md", "text": "Keep this chunk after reload."},
+    )
+    before = client.get("/health").json()["chunks"]
+    assert before >= 1
+    body = client.post("/v1/admin/reload", headers=ADMIN).json()
+    assert body["status"] == "noop"
+    assert client.get("/health").json()["chunks"] == before
+
+
 def test_golden_suite_gate() -> None:
     results, rate = run_golden_suite()
     failed = [r for r in results if not r.passed]

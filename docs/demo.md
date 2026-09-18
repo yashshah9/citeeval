@@ -44,7 +44,7 @@ Expect `no_evidence`.
 ## 4. Eval gate (1 min)
 
 ```bash
-citeeval eval --min-pass-rate 0.8
+citeeval eval --min-pass-rate 0.8 --baseline evals/baseline.json
 ```
 
-Show pass_rate and mention CI runs this on every PR.
+Show pass_rate and **BASELINE OK**. Mention CI fails on both pass-rate drops and case-level regressions (or top-source drift).

@@ -10,7 +10,7 @@ Uses [platformkit](https://github.com/yashshah9/platformkit) for pluggable auth/
 uv venv --python 3.12
 uv pip install -e ../platformkit -e ".[dev]"
 uv run pytest tests/test_api.py -q
-uv run citeeval eval --min-pass-rate 0.8
+uv run citeeval eval --min-pass-rate 0.8 --baseline evals/baseline.json
 uv run citeeval serve   # :8091
 ```
 

@@ -1,0 +1,41 @@
+{
+  "pass_rate": 1.0,
+  "cases": {
+    "refund-window": {
+      "passed": true,
+      "reason": "ok",
+      "top_source": "policy.md",
+      "top_score": 0.4677
+    },
+    "shipping-standard": {
+      "passed": true,
+      "reason": "ok",
+      "top_source": "shipping.md",
+      "top_score": 0.5779
+    },
+    "express-shipping": {
+      "passed": true,
+      "reason": "ok",
+      "top_source": "shipping.md",
+      "top_score": 0.5779
+    },
+    "api-key-hygiene": {
+      "passed": true,
+      "reason": "ok",
+      "top_source": "security.md",
+      "top_score": 0.8914
+    },
+    "key-rotation": {
+      "passed": true,
+      "reason": "ok",
+      "top_source": "security.md",
+      "top_score": 0.6826
+    },
+    "no-evidence-warranty": {
+      "passed": true,
+      "reason": "ok",
+      "top_source": null,
+      "top_score": null
+    }
+  }
+}

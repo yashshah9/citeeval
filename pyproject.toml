@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "citeeval"
-version = "0.2.0"
+version = "0.3.0"
 description = "Production RAG platform with citations, evals, and cost observability"
 readme = "README.md"
 license = "MIT"
@@ -41,6 +41,7 @@ packages = ["src/citeeval"]
 
 [tool.hatch.build.targets.wheel.force-include]
 "src/citeeval/data/cases.json" = "citeeval/data/cases.json"
+"src/citeeval/data/baseline.json" = "citeeval/data/baseline.json"
 "src/citeeval/py.typed" = "citeeval/py.typed"
 
 [tool.uv.sources]

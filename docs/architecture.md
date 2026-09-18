@@ -34,8 +34,10 @@ List recent traces via `GET /v1/traces`.
 ## Eval promotion gate
 
 ```bash
-citeeval eval --min-pass-rate 0.8
+citeeval eval --min-pass-rate 0.8 --baseline evals/baseline.json
+# refresh after intentional improvements:
+citeeval eval --write-baseline evals/baseline.json
 ```
 
 Golden corpus + cases live in `evals/cases.json` (bundled under `citeeval/data/`).
-CI fails when the pass rate drops below the threshold.
+CI fails when the pass rate drops **or** a previously-passing case regresses / changes top citation source.

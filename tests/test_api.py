@@ -146,3 +146,29 @@ def test_golden_suite_gate() -> None:
     failed = [r for r in results if not r.passed]
     assert failed == [], [(r.case.id, r.reason, r.answer[:80]) for r in failed]
     assert rate == 1.0
+
+
+def test_baseline_compare_detects_regression() -> None:
+    from citeeval.evals import (
+        EvalCase,
+        EvalResult,
+        compare_to_baseline,
+        snapshot_from_results,
+    )
+
+    results, rate = run_golden_suite()
+    baseline = snapshot_from_results(results, pass_rate=rate)
+    assert compare_to_baseline(results, baseline) == []
+    # flip one previously-passing case
+    broken = [
+        EvalResult(
+            case=EvalCase(id=results[0].case_id, question="x"),
+            passed=False,
+            answer="",
+            citations=[],
+            reason="forced",
+        ),
+        *results[1:],
+    ]
+    regs = compare_to_baseline(broken, baseline)
+    assert any(results[0].case_id in m and "was pass, now fail" in m for m in regs)

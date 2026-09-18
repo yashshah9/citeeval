@@ -29,9 +29,8 @@ def _wait_healthy(timeout: float = 60.0) -> None:
     raise RuntimeError(f"citeeval not healthy at {BASE}")
 
 
-def test_docker_ingest_ask_eval() -> None:
+def test_docker_ingest_ask_eval_traces() -> None:
     _wait_healthy()
-    # reset if admin available
     httpx.post(
         f"{BASE}/v1/admin/reset",
         headers={"Authorization": "Bearer admin-key"},
@@ -56,6 +55,11 @@ def test_docker_ingest_ask_eval() -> None:
     body = ask.json()
     assert body["status"] == "ok"
     assert body["citations"][0]["source"] == "policy.md"
+    assert body["trace"]["retrieval_mode"] == "hybrid_hash"
+    assert body["trace"]["estimated_cost_usd"] > 0
+
+    traces = httpx.get(f"{BASE}/v1/traces", headers=AUTH, timeout=5.0).json()
+    assert traces["count"] >= 1
 
     ev = httpx.post(
         f"{BASE}/v1/eval",
@@ -76,3 +80,4 @@ def test_docker_ingest_ask_eval() -> None:
     health = httpx.get(f"{BASE}/health", timeout=5.0).json()
     assert health["queue"] == "redis"
     assert health["audit"] == "postgres"
+    assert health["retrieval"] == "hybrid_hash"

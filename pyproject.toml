@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "citeeval"
-version = "0.1.0"
+version = "0.2.0"
 description = "Production RAG platform with citations, evals, and cost observability"
 readme = "README.md"
 license = "MIT"
@@ -38,6 +38,10 @@ citeeval = "citeeval.cli:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/citeeval"]
+
+[tool.hatch.build.targets.wheel.force-include]
+"src/citeeval/data/cases.json" = "citeeval/data/cases.json"
+"src/citeeval/py.typed" = "citeeval/py.typed"
 
 [tool.uv.sources]
 platformkit = { path = "../platformkit", editable = true }

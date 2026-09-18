@@ -12,11 +12,14 @@ from citeeval.__version__ import __version__
 from citeeval.config import Settings
 from citeeval.evals import EvalCase, run_eval
 from citeeval.platform import build_kit
-from citeeval.rag import Corpus, answer_from_hits
+from citeeval.rag import Corpus
 
 settings = Settings()
 kit = build_kit(settings)
-corpus = Corpus()
+corpus = Corpus(
+    cost_per_ask_usd=settings.cost_per_ask_usd,
+    dense_weight=settings.dense_weight,
+)
 
 app = FastAPI(title="citeeval", version=__version__)
 
@@ -35,6 +38,8 @@ class EvalCaseModel(BaseModel):
     question: str
     must_cite_source: str | None = None
     must_include: str | None = None
+    expect_no_evidence: bool = False
+    id: str | None = None
 
 
 class EvalRequest(BaseModel):
@@ -63,6 +68,8 @@ def health() -> dict[str, Any]:
         "audit": settings.audit_driver,
         "queue": settings.queue_driver,
         "chunks": len(corpus.chunks),
+        "traces": len(corpus.traces),
+        "retrieval": "hybrid_hash",
     }
 
 
@@ -79,7 +86,6 @@ def ingest(
         payload={"source": body.source, "chunks": len(chunks)},
         tenant_id=tenant_id,
     )
-    # optional queue signal for async pipelines later
     kit.queue.enqueue("citeeval.ingest", {"source": body.source, "chunks": len(chunks)})
     return {"source": body.source, "chunks": len(chunks), "chunk_ids": [c.id for c in chunks]}
 
@@ -90,18 +96,56 @@ def ask(
     principal: Annotated[Principal, Depends(require_principal)],
 ) -> dict[str, Any]:
     tenant_id = principal.tenant_id or principal.id
-    hits = corpus.search(body.question, top_k=body.top_k)
-    answer, citations = answer_from_hits(body.question, hits)
+    answer, citations, trace = corpus.ask(body.question, top_k=body.top_k)
     kit.audit.emit(
         actor=principal.id,
         action="ask.query",
-        payload={"question": body.question[:200], "hits": len(hits)},
+        payload={
+            "question": body.question[:200],
+            "hits": trace.hit_count,
+            "latency_ms": trace.latency_ms,
+            "cost_usd": trace.estimated_cost_usd,
+        },
         tenant_id=tenant_id,
     )
     return {
         "answer": answer,
         "citations": citations,
         "status": "ok" if citations else "no_evidence",
+        "trace": {
+            "latency_ms": trace.latency_ms,
+            "hit_count": trace.hit_count,
+            "top_score": trace.top_score,
+            "estimated_cost_usd": trace.estimated_cost_usd,
+            "retrieval_mode": trace.retrieval_mode,
+            "chunk_ids": trace.chunk_ids,
+        },
+    }
+
+
+@app.get("/v1/traces")
+def list_traces(
+    principal: Annotated[Principal, Depends(require_principal)],
+    limit: int = 20,
+) -> dict[str, Any]:
+    del principal
+    limit = max(1, min(limit, 100))
+    items = list(reversed(corpus.traces[-limit:]))
+    total_cost = sum(t.estimated_cost_usd for t in corpus.traces)
+    return {
+        "count": len(items),
+        "total_estimated_cost_usd": round(total_cost, 6),
+        "traces": [
+            {
+                "question": t.question,
+                "latency_ms": t.latency_ms,
+                "hit_count": t.hit_count,
+                "top_score": t.top_score,
+                "estimated_cost_usd": t.estimated_cost_usd,
+                "retrieval_mode": t.retrieval_mode,
+            }
+            for t in items
+        ],
     }
 
 
@@ -113,9 +157,11 @@ def eval_endpoint(
     tenant_id = principal.tenant_id or principal.id
     cases = [
         EvalCase(
+            id=c.id,
             question=c.question,
             must_cite_source=c.must_cite_source,
             must_include=c.must_include,
+            expect_no_evidence=c.expect_no_evidence,
         )
         for c in body.cases
     ]
@@ -131,8 +177,10 @@ def eval_endpoint(
         "total": len(results),
         "passed": passed,
         "failed": len(results) - passed,
+        "pass_rate": passed / len(results) if results else 0.0,
         "results": [
             {
+                "id": r.case.id,
                 "question": r.case.question,
                 "passed": r.passed,
                 "reason": r.reason,

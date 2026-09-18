@@ -1,28 +1,37 @@
 # citeeval
 
-Production-shaped **RAG** with citations, offline **evals**, and pluggable auth/audit/queue via [platformkit](../platformkit).
+Production-shaped **RAG** with citations, hybrid retrieval, offline **evals**, and cost/latency traces.
 
-MVP retrieval is deterministic lexical search (no paid embeddings) so CI/docker stays reliable.
+Uses [platformkit](https://github.com/yashshah9/platformkit) for pluggable auth/audit/queues.
 
-## Docker
-
-```bash
-cd citeeval
-docker compose up --build -d redis postgres citeeval
-docker compose run --rm integration
-```
-
-## Local tests
+## Quick start
 
 ```bash
 uv venv --python 3.12
 uv pip install -e ../platformkit -e ".[dev]"
-uv run pytest tests/test_api.py -v
+uv run pytest tests/test_api.py -q
+uv run citeeval eval --min-pass-rate 0.8
+uv run citeeval serve   # :8091
+```
+
+## Docker
+
+```bash
+docker compose up --build -d redis postgres citeeval
+docker compose run --rm integration
 ```
 
 ## API
 
-- `POST /v1/ingest` — add documents
-- `POST /v1/ask` — question + citations
-- `POST /v1/eval` — golden-case eval gate
-- `POST /v1/admin/reset` — admin only
+| Method | Path | Purpose |
+|--------|------|---------|
+| POST | `/v1/ingest` | add documents |
+| POST | `/v1/ask` | question + citations + trace |
+| GET | `/v1/traces` | recent ask traces + cost rollup |
+| POST | `/v1/eval` | run eval cases against live corpus |
+| POST | `/v1/admin/reset` | clear corpus (admin) |
+
+## Docs
+
+- [Architecture](docs/architecture.md)
+- [Demo script](docs/demo.md)

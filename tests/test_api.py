@@ -8,6 +8,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from citeeval import api as api_module
+from citeeval.evals import run_golden_suite
 from citeeval.platform import build_kit
 from citeeval.rag import Corpus
 
@@ -20,7 +21,10 @@ def client() -> Iterator[TestClient]:
     api_module.settings.audit_driver = "memory"
     api_module.settings.queue_driver = "memory"
     api_module.kit = build_kit(api_module.settings)
-    api_module.corpus = Corpus()
+    api_module.corpus = Corpus(
+        cost_per_ask_usd=api_module.settings.cost_per_ask_usd,
+        dense_weight=api_module.settings.dense_weight,
+    )
     with TestClient(api_module.app) as test_client:
         yield test_client
 
@@ -30,7 +34,9 @@ ADMIN = {"Authorization": "Bearer admin-key"}
 
 
 def test_health(client: TestClient) -> None:
-    assert client.get("/health").json()["status"] == "ok"
+    body = client.get("/health").json()
+    assert body["status"] == "ok"
+    assert body["retrieval"] == "hybrid_hash"
 
 
 def test_ask_requires_auth(client: TestClient) -> None:
@@ -43,9 +49,11 @@ def test_ask_empty_corpus(client: TestClient) -> None:
     body = resp.json()
     assert body["status"] == "no_evidence"
     assert body["citations"] == []
+    assert "trace" in body
+    assert body["trace"]["hit_count"] == 0
 
 
-def test_ingest_ask_citations(client: TestClient) -> None:
+def test_ingest_ask_citations_and_trace(client: TestClient) -> None:
     ing = client.post(
         "/v1/ingest",
         headers=AUTH,
@@ -69,7 +77,15 @@ def test_ingest_ask_citations(client: TestClient) -> None:
     assert body["status"] == "ok"
     assert body["citations"]
     assert body["citations"][0]["source"] == "policy.md"
+    assert "lexical_score" in body["citations"][0]
+    assert "dense_score" in body["citations"][0]
     assert "30 days" in body["answer"]
+    assert body["trace"]["retrieval_mode"] == "hybrid_hash"
+    assert body["trace"]["estimated_cost_usd"] > 0
+
+    traces = client.get("/v1/traces", headers=AUTH).json()
+    assert traces["count"] >= 1
+    assert traces["total_estimated_cost_usd"] > 0
 
 
 def test_eval_pass_and_fail(client: TestClient) -> None:
@@ -104,6 +120,29 @@ def test_eval_pass_and_fail(client: TestClient) -> None:
     assert body["failed"] == 1
 
 
+def test_eval_no_evidence_case(client: TestClient) -> None:
+    resp = client.post(
+        "/v1/eval",
+        headers=AUTH,
+        json={
+            "cases": [
+                {
+                    "question": "lifetime warranty for drones?",
+                    "expect_no_evidence": True,
+                }
+            ]
+        },
+    )
+    assert resp.json()["passed"] == 1
+
+
 def test_reset_requires_admin(client: TestClient) -> None:
     assert client.post("/v1/admin/reset", headers=AUTH).status_code == 403
     assert client.post("/v1/admin/reset", headers=ADMIN).status_code == 200
+
+
+def test_golden_suite_gate() -> None:
+    results, rate = run_golden_suite()
+    failed = [r for r in results if not r.passed]
+    assert failed == [], [(r.case.id, r.reason, r.answer[:80]) for r in failed]
+    assert rate == 1.0

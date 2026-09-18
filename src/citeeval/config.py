@@ -11,13 +11,15 @@ class Settings(BaseSettings):
     host: str = "0.0.0.0"
     port: int = 8091
     api_keys: str = "dev-key:demo-tenant"
-
     admin_keys: str = "admin-key"
     auth_driver: str = "api_key"
     audit_driver: str = "memory"
     queue_driver: str = "memory"
     redis_url: str = "redis://localhost:6379/0"
     postgres_dsn: str = "postgresql://localhost:5432/citeeval"
+    eval_min_pass_rate: float = 0.8
+    cost_per_ask_usd: float = 0.0001
+    dense_weight: float = 0.45
 
     def api_key_map(self) -> dict[str, str]:
         out: dict[str, str] = {}
